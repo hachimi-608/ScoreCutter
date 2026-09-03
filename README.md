@@ -1,4 +1,4 @@
-# ScoreFrame
+# ScoreCutter
 
 Browser-based manual cropping and cross-page composition for screen-ready sheet music images.
 
