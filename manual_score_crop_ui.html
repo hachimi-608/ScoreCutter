@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>曲谱手动分块</title>
+  <style>
+    :root { --ink:#20252b; --muted:#687382; --line:#dfe4ea; --accent:#2563eb; --soft:#eaf1ff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f5f7fa; color:var(--ink); font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    header { padding:16px 22px 13px; background:#fff; border-bottom:1px solid var(--line); }
+    h1 { margin:0; font-size:20px; font-weight:650; }
+    header p { margin:4px 0 0; color:var(--muted); }
+    main { max-width:1540px; margin:auto; padding:16px; display:grid; grid-template-columns:190px minmax(320px,.82fr) minmax(440px,1.18fr); gap:14px; }
+    section { background:#fff; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .head { padding:11px 13px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .head h2 { margin:0; font-size:14px; }
+    .body { padding:12px; }
+    .hint { color:var(--muted); font-size:12px; }
+    button, input { font:inherit; }
+    button { border:1px solid #cbd3df; background:#fff; border-radius:6px; padding:7px 10px; cursor:pointer; color:var(--ink); }
+    button:hover { color:var(--accent); border-color:var(--accent); }
+    button.primary { color:#fff; background:var(--accent); border-color:var(--accent); }
+    button.primary:hover { color:#fff; background:#1d4ed8; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    input[type=number] { width:92px; padding:6px; border:1px solid #cbd3df; border-radius:5px; }
+    input[type=file] { width:100%; }
+    #pages { max-height:calc(100vh - 145px); overflow:auto; padding:8px; }
+    .thumb { width:100%; border:1px solid var(--line); border-radius:5px; background:#fff; margin-bottom:7px; padding:4px; cursor:pointer; text-align:left; }
+    .thumb:hover, .thumb.active { border-color:var(--accent); background:var(--soft); }
+    .thumb img { display:block; width:100%; height:116px; object-fit:contain; }
+    .thumb span { display:block; color:var(--muted); font-size:11px; margin-top:3px; }
+    #editor { min-height:calc(100vh - 145px); display:flex; flex-direction:column; }
+    #stageWrap { flex:1; min-height:460px; padding:14px; background:#e9edf2; display:flex; justify-content:center; align-items:flex-start; overflow:auto; }
+    #stage { position:relative; display:inline-block; line-height:0; box-shadow:0 2px 12px #0002; background:#fff; user-select:none; }
+    #pageImage { display:block; max-width:min(100%, 860px); max-height:calc(100vh - 230px); width:auto; height:auto; }
+    .selection { position:absolute; left:0; right:0; border:2px solid var(--accent); background:#2563eb18; pointer-events:none; }
+    .handle { position:absolute; left:-7px; right:-7px; height:12px; margin-top:-6px; border-radius:8px; background:var(--accent); cursor:ns-resize; pointer-events:auto; }
+    .handle::after { content:""; display:block; width:32px; height:2px; margin:5px auto; background:#fff; opacity:.9; }
+    #topHandle { top:0; }
+    #bottomHandle { bottom:0; }
+    #editorControls { padding:10px 13px; border-top:1px solid var(--line); display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    #editorControls label, .field { color:var(--muted); display:flex; align-items:center; gap:5px; }
+    #previewWrap { padding:13px; background:#eef1f5; min-height:310px; display:flex; justify-content:center; align-items:flex-start; overflow:auto; }
+    #output { display:block; width:100%; height:auto; box-shadow:0 2px 10px #0002; background:#fff; }
+    #previewEmpty { color:var(--muted); padding:80px 10px; text-align:center; }
+    #collageControls { display:grid; gap:8px; }
+    #collageControls input[type=range], #singleControls input[type=range] { width:100%; accent-color:var(--accent); }
+    .mode-button { border-color:var(--accent); color:var(--accent); }
+    #rightControls { display:grid; gap:10px; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .row label { color:var(--muted); }
+    #message { color:var(--muted); font-size:12px; min-height:36px; }
+    @media (max-width:1050px) { main { grid-template-columns:170px minmax(350px,1fr); } main > section:last-child { grid-column:1 / -1; } #pages { max-height:calc(100vh - 180px); } }
+    @media (max-width:700px) { main { display:block; padding:9px; } main > section { margin-bottom:10px; } #pages { display:flex; gap:8px; max-height:none; overflow-x:auto; } .thumb { flex:0 0 120px; margin:0; } .thumb img { height:90px; } #editor { min-height:0; } #stageWrap { min-height:320px; } #pageImage { max-height:58vh; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <div class="head"><h2>页面</h2><span id="pageCount" class="hint">未载入</span></div>
+      <div class="body"><input id="folder" type="file" webkitdirectory multiple accept="image/png,image/jpeg"></div>
+      <div id="pages"><div class="hint" style="padding:18px 6px">先选择页面渲染器输出的图片文件夹。</div></div>
+    </section>
+    <section id="editor">
+      <div class="head"><h2 id="pageTitle">选择一页开始</h2><span id="bounds" class="hint">上下边界</span></div>
+      <div id="stageWrap"><div id="stage" hidden><img id="pageImage" alt="曲谱页面"><div id="selection" class="selection"><div id="topHandle" class="handle" data-handle="top"></div><div id="bottomHandle" class="handle" data-handle="bottom"></div></div></div><div id="editorEmpty" class="hint">载入页面图片后拖动两条蓝线。</div></div>
+      <div id="editorControls">
+        <button id="prev" disabled>上一页</button><button id="next" disabled>下一页</button><button id="collageToggle" class="mode-button" disabled>进入拼图</button><button id="collageFirstEdit" hidden>编辑上一页</button><button id="collageSecondEdit" hidden>编辑下一页</button>
+        <span class="hint">上边界 <strong id="topValue">0 px</strong></span>
+        <span class="hint">下边界 <strong id="bottomValue">0 px</strong></span>
+      </div>
+      <div id="collageStatus" class="hint" style="padding:0 13px 10px;" hidden></div>
+    </section>
+    <section>
+      <div class="head"><h2>输出预览</h2><span id="chunkLabel" class="hint">第 1 块</span></div>
+      <div class="body" id="rightControls">
+        <div class="row"><label>画布宽度</label><input id="outW" type="number" value="1920" min="200" step="10"></div>
+        <div class="row"><label>画布比例</label><select id="aspect"><option value="16:9">16:9</option><option value="4:3">4:3</option></select></div>
+        <div id="singleControls">
+          <div class="row"><label>中心偏置</label><output id="offsetValue">0 px</output></div>
+          <input id="centerOffset" type="range" min="-540" max="540" step="1" value="0" aria-label="中心偏置">
+        </div>
+        <div id="collageControls" hidden>
+          <div class="row"><label>上一页</label><output id="collageOffset1Value">0 px</output></div>
+          <input id="collageOffset1" type="range" min="-540" max="540" step="1" value="0" aria-label="上一页偏置">
+          <div class="row"><label>下一页</label><output id="collageOffset2Value">0 px</output></div>
+          <input id="collageOffset2" type="range" min="-540" max="540" step="1" value="0" aria-label="下一页偏置">
+        </div>
+        <div id="message">左右全宽贴合 PNG 边缘；输出保持原始比例。按 Enter 可直接导出。</div>
+        <button id="export" class="primary" disabled>导出当前 PNG（Enter）</button>
+      </div>
+      <div id="previewWrap"><canvas id="output" hidden></canvas><div id="previewEmpty">当前裁剪区域预览</div></div>
+    </section>
+  </main>
+  <script>
+    const state = { files:[], urls:new Map(), index:-1, top:0, bottom:0, naturalWidth:0, naturalHeight:0, chunk:1, drag:null, collage:null, centerOffset:Number(localStorage.getItem('scoreCropCenterOffset')||0), collageOffset1:Number(localStorage.getItem('scoreCropOffset1')||0), collageOffset2:Number(localStorage.getItem('scoreCropOffset2')||0), cropHeight:Number(localStorage.getItem('scoreCropHeight')||0), lastBottomByPage:new Map() };
+    const $ = id => document.getElementById(id);
+    const folder = $('folder');
+    folder.addEventListener('change', () => {
+      for (const url of state.urls.values()) URL.revokeObjectURL(url);
+      state.urls.clear();
+      state.files = [...folder.files].filter(file => file.type.startsWith('image/')).sort((a,b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath, undefined, {numeric:true}));
+      state.index = state.files.length ? 0 : -1;
+      state.collage = null;
+      $('pageCount').textContent = `${state.files.length} 页`;
+      folder.blur(); renderThumbnails(); updateModeUi(); loadCurrent();
+    });
+    function urlFor(file) { if (!state.urls.has(file)) state.urls.set(file, URL.createObjectURL(file)); return state.urls.get(file); }
+    function renderThumbnails() {
+      const pages = $('pages'); pages.replaceChildren();
+      state.files.forEach((file,index) => { const button=document.createElement('button'); button.className='thumb'+(index===state.index?' active':''); const img=document.createElement('img'); img.src=urlFor(file); img.alt=`第 ${index+1} 页`; const span=document.createElement('span'); span.textContent=`第 ${index+1} 页`; button.append(img,span); button.addEventListener('click',()=>{ if(state.collage){ syncCollageView(); if(index===state.collage.first.index){state.collage.view='first';state.index=index;}else{state.collage.second.index=index;state.collage.second.file=file;state.collage.view='second';state.collage.second.top=null;state.collage.second.bottom=null;state.index=index;} }else state.index=index; renderThumbnails();loadCurrent(); }); pages.append(button); });
+      if (!state.files.length) pages.innerHTML='<div class="hint" style="padding:18px 6px">没有找到页面图片。</div>';
+    }
+    function updateModeUi() {
+      const active=Boolean(state.collage); $('collageToggle').textContent=active?'退出拼图':'进入拼图'; $('collageControls').hidden=!active; $('collageControls').style.display=active?'grid':'none'; $('singleControls').hidden=active; $('singleControls').style.display=active?'none':'block'; $('collageStatus').hidden=!active; $('collageFirstEdit').hidden=!active; $('collageSecondEdit').hidden=!active;
+      if(active) $('collageStatus').textContent=`上一页：第 ${state.collage.first.index+1} 页；下一页：第 ${state.collage.second.index+1} 页。可点击左侧页面或切换编辑按钮。`;
+    }
+    function syncCollageView() { if(!state.collage) return; if(state.collage.view==='first'){state.collage.first.top=state.top;state.collage.first.bottom=state.bottom;}else{state.collage.second.top=state.top;state.collage.second.bottom=state.bottom;} }
+    function loadCurrent() {
+      const file=state.files[state.index]; const active=Boolean(state.collage); $('prev').disabled=active||state.index<=0; $('next').disabled=active||state.index<0||state.index>=state.files.length-1; $('export').disabled=!file; $('collageToggle').disabled=active?!file:(!file||state.index>=state.files.length-1);
+      if (!file) { $('stage').hidden=true; $('editorEmpty').hidden=false; $('output').hidden=true; $('previewEmpty').hidden=false; $('pageTitle').textContent='选择一页开始'; updateModeUi(); return; }
+      const image=$('pageImage'); image.onload=()=>{ state.naturalWidth=image.naturalWidth; state.naturalHeight=image.naturalHeight; const defaultHeight=state.cropHeight||Math.round(state.naturalHeight*.92); if(state.collage&&state.collage.view==='first'){state.top=state.collage.first.top;state.bottom=state.collage.first.bottom;}else if(state.collage&&state.collage.second.top!==null){state.top=state.collage.second.top;state.bottom=state.collage.second.bottom;}else{state.top=0;state.bottom=Math.min(state.naturalHeight,defaultHeight);} if(state.bottom<=state.top){state.top=0;state.bottom=Math.min(state.naturalHeight,defaultHeight);} $('stage').hidden=false; $('editorEmpty').hidden=true; $('pageTitle').textContent=state.collage?(state.collage.view==='first'?`第 ${state.index+1} 页（拼图上一页）`:`第 ${state.index+1} 页（拼图下一页）`):`第 ${state.index+1} 页`; syncOffsetRange(); updateModeUi(); updateBounds(); renderPreview(); }; image.src=urlFor(file);
+    }
+    function updateBounds() { $('topValue').textContent=`${state.top} px`; $('bottomValue').textContent=`${state.bottom} px`; $('bounds').textContent=`${state.top}–${state.bottom} px`; requestAnimationFrame(updateOverlay); }
+    function updateOverlay() { const image=$('pageImage'); if (!image.clientHeight) return; const scale=image.clientHeight/state.naturalHeight; $('selection').style.top=`${state.top*scale}px`; $('selection').style.height=`${Math.max(1,(state.bottom-state.top)*scale)}px`; }
+    function setBound(which,value) { value=Math.max(0,Math.min(state.naturalHeight,Math.round(Number(value)||0))); if(which==='top') state.top=Math.min(value,state.bottom-1); else state.bottom=Math.max(value,state.top+1); updateBounds(); renderPreview(); }
+    ['topHandle','bottomHandle'].forEach(id=>$(id).addEventListener('pointerdown',e=>{ e.preventDefault(); state.drag=$(id).dataset.handle; $(id).setPointerCapture?.(e.pointerId); }));
+    document.addEventListener('pointermove',e=>{ if(!state.drag) return; const rect=$('pageImage').getBoundingClientRect(); const y=Math.max(0,Math.min(rect.height,e.clientY-rect.top)); setBound(state.drag,y/rect.height*state.naturalHeight); });
+    document.addEventListener('pointerup',()=>{state.drag=null;});
+    window.addEventListener('resize',updateOverlay);
+    $('prev').addEventListener('click',()=>{if(state.index>0){state.index--;renderThumbnails();loadCurrent();}}); $('next').addEventListener('click',()=>{if(state.index<state.files.length-1){state.index++;renderThumbnails();loadCurrent();}});
+    function outputSize() { const width=Math.max(200,Number($('outW').value)||1920); const ratio=$('aspect').value==='4:3'?4/3:16/9; return {width,height:Math.max(1,Math.round(width/ratio))}; }
+    function syncOffsetRange() { const max=Math.max(1,Math.round(outputSize().height/2)); const input=$('centerOffset'); input.min=-max; input.max=max; state.centerOffset=Math.max(-max,Math.min(max,state.centerOffset)); input.value=state.centerOffset; $('offsetValue').textContent=`${state.centerOffset} px`; }
+    ['outW','aspect','centerOffset'].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='centerOffset'){ state.centerOffset=Number($('centerOffset').value)||0; localStorage.setItem('scoreCropCenterOffset',String(state.centerOffset)); $('offsetValue').textContent=`${state.centerOffset} px`; } else syncOffsetRange(); renderPreview(); }));
+    syncOffsetRange();
+    function loadImageFile(file) { return new Promise((resolve,reject)=>{ const image=new Image(); image.onload=()=>resolve(image); image.onerror=reject; image.src=urlFor(file); }); }
+    async function renderCanvas() { const image=$('pageImage'); if(!image.naturalWidth||state.bottom<=state.top) return; const size=outputSize(), cropHeight=state.bottom-state.top, drawW=size.width, drawH=Math.max(1,Math.round(cropHeight*drawW/state.naturalWidth)); const canvas=$('output'); canvas.width=size.width;canvas.height=size.height;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);const y=Math.round((size.height-drawH)/2+state.centerOffset);ctx.drawImage(image,0,state.top,state.naturalWidth,cropHeight,0,y,drawW,drawH); canvas.hidden=false; $('previewEmpty').hidden=true; $('message').textContent=drawH>size.height?'左右已全宽贴合；当前框选内容高于画布，会上下裁切。':`左右已全宽贴合 PNG 边缘，输出 ${size.width}×${size.height}。`; }
+    async function renderCollageCanvas() { if(!state.collage) return; syncCollageView(); const first=state.collage.first, secondRecord=state.collage.second; if(!secondRecord.file||secondRecord.top===null||secondRecord.bottom<=secondRecord.top) return; const firstImage=await loadImageFile(first.file), second=await loadImageFile(secondRecord.file), size=outputSize(), firstHeight=first.bottom-first.top, secondHeight=secondRecord.bottom-secondRecord.top, firstDrawH=Math.max(1,Math.round(firstHeight*size.width/firstImage.naturalWidth)), secondDrawH=Math.max(1,Math.round(secondHeight*size.width/second.naturalWidth)), base=Math.round((size.height-firstDrawH-secondDrawH)/2), canvas=$('output'); canvas.width=size.width;canvas.height=size.height;const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(firstImage,0,first.top,firstImage.naturalWidth,firstHeight,0,base+state.collageOffset1,size.width,firstDrawH);ctx.drawImage(second,0,secondRecord.top,second.naturalWidth,secondHeight,0,base+firstDrawH+state.collageOffset2,size.width,secondDrawH);canvas.hidden=false;$('previewEmpty').hidden=true;$('message').textContent=`拼图预览：上一页 ${state.collageOffset1} px，下一页 ${state.collageOffset2} px。`; }
+    let renderToken=0; async function renderPreview(){const token=++renderToken; if(state.collage) await renderCollageCanvas(); else await renderCanvas(); if(token!==renderToken)return;}
+    function enterCollage(){ if(state.collage){ syncCollageView(); const first=state.collage.first; state.collage=null; state.index=first.index; state.top=first.top; state.bottom=first.bottom; renderThumbnails(); updateModeUi(); loadCurrent(); return; } if(state.index<0||state.index>=state.files.length-1){$('message').textContent='当前页没有下一页，无法进入拼图。';return;} const first={file:state.files[state.index],index:state.index,top:state.top,bottom:state.bottom}; state.collage={first,second:{file:state.files[state.index+1],index:state.index+1,top:null,bottom:null},view:'second'}; state.index++; renderThumbnails(); updateModeUi(); loadCurrent(); }
+    $('collageToggle').addEventListener('click',enterCollage);
+    $('collageFirstEdit').addEventListener('click',()=>{ if(!state.collage)return; syncCollageView(); state.collage.view='first'; state.index=state.collage.first.index; renderThumbnails(); loadCurrent(); });
+    $('collageSecondEdit').addEventListener('click',()=>{ if(!state.collage)return; syncCollageView(); state.collage.view='second'; state.index=state.collage.second.index; renderThumbnails(); loadCurrent(); });
+    ['collageOffset1','collageOffset2'].forEach(id=>$(id).addEventListener('input',()=>{ if(id==='collageOffset1'){state.collageOffset1=Number($(id).value)||0;localStorage.setItem('scoreCropOffset1',String(state.collageOffset1));$('collageOffset1Value').textContent=`${state.collageOffset1} px`;}else{state.collageOffset2=Number($(id).value)||0;localStorage.setItem('scoreCropOffset2',String(state.collageOffset2));$('collageOffset2Value').textContent=`${state.collageOffset2} px`;} renderPreview(); }));
+    $('collageOffset1Value').textContent=`${state.collageOffset1} px`; $('collageOffset2Value').textContent=`${state.collageOffset2} px`; $('collageOffset1').value=state.collageOffset1; $('collageOffset2').value=state.collageOffset2;
+    async function exportCurrent(){ if(!$('export').disabled){ const wasCollage=Boolean(state.collage); if(wasCollage){ syncCollageView(); if(!state.collage.second.file||state.collage.second.top===null){$('message').textContent='请先选择并裁剪拼图的下一页。';return;} await renderCollageCanvas(); }else await renderCanvas(); const link=document.createElement('a'); link.download=`chunk_${String(state.chunk).padStart(4,'0')}.png`; link.href=$('output').toDataURL('image/png'); link.click(); const exportedHeight=wasCollage?state.collage.second.bottom-state.collage.second.top:state.bottom-state.top; state.cropHeight=exportedHeight; localStorage.setItem('scoreCropHeight',String(exportedHeight)); if(wasCollage){const second=state.collage.second;state.lastBottomByPage.set(second.index,second.bottom);state.collage=null;state.index=second.index;state.top=second.bottom;state.bottom=Math.min(state.naturalHeight,state.top+exportedHeight);}else{state.lastBottomByPage.set(state.index,state.bottom);state.top=state.bottom;state.bottom=Math.min(state.naturalHeight,state.top+exportedHeight);} updateBounds(); $('message').textContent=`已导出 ${link.download}，下一块沿用高度 ${exportedHeight} px。按 Enter 可继续导出。`; state.chunk++; $('chunkLabel').textContent=`第 ${state.chunk} 块`; updateModeUi(); renderThumbnails(); renderPreview(); } }
+    $('export').addEventListener('click',exportCurrent);
+    document.addEventListener('keydown',event=>{ if(event.key==='Enter'&&!event.isComposing&&!event.repeat){ event.preventDefault(); event.stopPropagation(); exportCurrent(); } }, true);
+    document.addEventListener('keyup',event=>{ if(event.key==='Enter'){ event.preventDefault(); event.stopPropagation(); } }, true);
+  </script>
+</body>
+</html>
